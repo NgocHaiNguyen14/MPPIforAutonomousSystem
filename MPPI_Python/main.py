@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from quadrotor_grad import quadrotor_grad
+from quadrotor_dynamics import quadrotor
 
 """
 Functions needed:
@@ -12,9 +12,9 @@ Functions needed:
 
 """
 Definition
-x: current state vector (12x1) (x, y, z, roll, pitch, yaw, xdot, ydot, zdot, rolldot, pitchdot, yawdot)
-u: control input vector (4x1)
-xd: goal state vector (6x1) [x, y, z, roll, pitch, yaw]
+x: current state vector (12) (x, y, z, roll, pitch, yaw, xdot, ydot, zdot, rolldot, pitchdot, yawdot)
+u: control input vector (4)
+xd: goal state vector (6) [x, y, z, roll, pitch, yaw]
 
 output: next state vector
 """
@@ -22,7 +22,7 @@ output: next state vector
 # Cost function definitions
 
 def cost(x, u):
-    x_flat = np.array(x[0])
+    x_flat = np.array(x)
     u = np.array(u).reshape(-1)
 
     Q = np.eye(len(x_flat))
@@ -31,8 +31,8 @@ def cost(x, u):
     return x_flat.T @ Q @ x_flat + u.T @ R @ u
 
 def final_cost(x, xd):
-    x_flat = np.array(x[0])
-    xd_flat = np.array(xd[0])
+    x_flat = np.array(x)
+    xd_flat = np.array(xd)
 
     Qf = 1000 * np.eye(len(x_flat))
     return (x_flat - xd_flat) @ Qf @ (x_flat - xd_flat).T
@@ -40,11 +40,11 @@ def final_cost(x, xd):
 """
 Forward pass or roll-out: shoot the dynamics
 
-xtraj: trajectory ((step + 1) x 12 x 1).
+xtraj: trajectory ((step + 1) x 12).
 The first position is initial condition. Last is desired target
-utraj: control input vector (step x 4 x 1)
+utraj: control input vector (step x 4)
 
-output: new xtraj ((step + 1) x 12 x 1)
+output: new xtraj ((step + 1) x 12)
 
 """
 
@@ -52,17 +52,18 @@ output: new xtraj ((step + 1) x 12 x 1)
 
 def forward_pass(x0, xtraj, utraj, dt):
     xtraj[0] = x0
-    num_act = len(utraj)
     for i in range(len(utraj)):
-    	A, B = quadrotor_grad(xtraj[i], utraj[i])
-        xtraj[i+1] = xtraj[i] + A * dt
+        xdot = quadrotor(xtraj[i], utraj[i])
+        result = np.array(xtraj[i]) + dt * np.array(xdot)  
+        xtraj[i+1] = result.tolist()
+
     return xtraj
 
 """
 Backward pass: calculate the trajectory cost
-xtraj: trajectory (step+1 x 6 x 1)
+xtraj: trajectory (step+1 x 12)
 The first position is initial condition. Last is desired target
-utraj: control inputs (step x 4 x 1)
+utraj: control inputs (step x 4)
 
 output: cost of trajectory
 """
@@ -86,7 +87,7 @@ output: rollouts of utraj (step x nu x N)
 """
 
 def gen_sample(N, scale, nu, step):
-    dutraj =  scale * np.random.randn(step, nu, N)
+    dutraj =  scale * np.random.rand(step, nu, N)
     
     return dutraj
 
@@ -98,30 +99,29 @@ output: optimal utraj(step x nu x 1)
 """
 
 def optimal_u(rutraj, cost):
-    lamda = 1
+    lamda = 100000
     weights = np.exp(-np.array(cost) / lamda)
     weights_sum = np.sum(weights)
     u = (rutraj @ weights) / weights_sum
     return u
 
-
 # Main
 
 # Boundary conditions
-x0 = [0, 0, 0, 0, 0, 0]
+x0 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-xd = [1, 1, 1, 0, 0, 0]
+xd = [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 # Control input params
 steps = 50        # Number of time steps
-time_step = 0.1   # Time step in second
-N = 1000          # Number of MPPI samples
-nu = 4            # 4 force inputs: w1, w2, w3, w4
-scale = 30        # Force scale
+dt = 0.1          # Time step in second
+N = 1000         # Number of MPPI samples
+nu = 4            # 4 ang vel^2 inputs: w1, w2, w3, w4
+scale = 5         # Force scale
 
 u_opt = []
 
-for i in range(n_act):
+for i in range(steps):
     print("solving time step #", i+1)
     # Reset trajectory
     xtraj = [x0 for _ in range(steps + 1)]
@@ -132,12 +132,12 @@ for i in range(n_act):
     # Use previously optimized values for already-computed steps
     if len(u_opt) > 0:
         for j in range(min(len(u_opt), rutraj.shape[0])):
-            rutraj[j] = u_opt[j]
+            rutraj[j] = np.tile(u_opt[j].reshape(4, 1), (1, N))
 
     # Evaluate each sample trajectory
     traj_cost = []
-    for ru in rutraj.transpose(4, 0, 1):  # (N x steps x 4)
-        new_xtraj = forward_pass(x0, xtraj, ru)
+    for ru in rutraj.transpose(2, 0, 1):  # (N x steps x 4)
+        new_xtraj = forward_pass(x0, xtraj, ru, dt)
         traj_cost.append(backward_pass(new_xtraj, ru, xd))
 
     # Choose best u
@@ -149,7 +149,7 @@ print("Calculating optimal u...")
 final_u = u_opt
 print("Optimal u: ", final_u)
 
-final_x = forward_pass(x0, xtraj, final_u)
+final_x = forward_pass(x0, xtraj, final_u, dt)
 optimal_cost = backward_pass(final_x, final_u, xd)
 
 print("Final cost:", optimal_cost)

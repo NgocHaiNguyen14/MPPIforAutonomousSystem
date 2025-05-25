@@ -4,17 +4,17 @@ def quadrotor_grad(in1, in2):
 # in1: states
 # in2: control inputs
 
-    pitch_t = in1[4, :]
-    pitch_dot_t = in1[10, :]
-    roll_t = in1[3, :]
-    roll_dot_t = in1[9, :]
-    yaw_t = in1[5, :]
-    yaw_dot_t = in1[11, :]
+    pitch_t = in1[4]
+    pitch_dot_t = in1[10]
+    roll_t = in1[3]
+    roll_dot_t = in1[9]
+    yaw_t = in1[5]
+    yaw_dot_t = in1[11]
     
-    u1 = in2[0, :]
-    u2 = in2[1, :]
-    u3 = in2[2, :]
-    u4 = in2[3, :]
+    u1 = in2[0]
+    u2 = in2[1]
+    u3 = in2[2]
+    u4 = in2[3]
 
     t2 = np.cos(pitch_t)
     t3 = np.cos(roll_t)
@@ -86,13 +86,20 @@ def quadrotor_grad(in1, in2):
 
     et4 = (t5 * t24 * (t48 + t55 + t56 + t60 - u1 * 9.2e+1 + u2 * 9.2e+1 - u3 * 9.2e+1 + u4 * 9.2e+1 - t5 * u2 * 1.15e+2 - t16 * u2 * 4.4e+1 - t16 * u4 * 4.4e+1 + t29 * u1 + t27 * u4 + t29 * u3 + t41 * u3 + pitch_dot_t * roll_dot_t * t2 * 4.6e+1 + pitch_dot_t * t17 * yaw_dot_t * 5.29e+2 - t2 * t3 * t6 * u1 * 5.5e+1 - t3 * t5 * t6 * t11 * t13 * 5.06e+2 + roll_dot_t * t3 * t6 * t13 * yaw_dot_t * 5.06e+2)) / 2.76e+2
 
-    mt1 = np.array([[0.0] * 40 + [(t25 * (t3 * t7 - t4 * t5 * t6)) / 2.0, t25 * (t3 * t4 + t5 * t6 * t7) * (-1.0 / 2.0), t2 * t6 * t25 * (-1.0 / 2.0)]])
+    mt1 = [[0.0] * 40 + [(t25 * (t3 * t7 - t4 * t5 * t6)) / 2.0, t25 * (t3 * t4 + t5 * t6 * t7) * (-1.0 / 2.0), t2 * t6 * t25 * (-1.0 / 2.0)]]
 
-    mt2 = np.array([(t23 * (t5 * t47 + t5 * t59 + t9 * t13 * t16 * 5.06e+2 - t11 * t13 * t16 * 5.06e+2 - t9 * t13 * t20 * 5.06e+2 + t11 * t13 * t20 * 5.06e+2 - t3 * t6 * u2 * 1.1e+2 + t3 * t6 * u4 * 1.1e+2 + t2 * t45 * u1 - t3 * t5 * t6 * u1 * 8.8e+1 + t3 * t5 * t6 * u2 * 8.8e+1 - t3 * t5 * t6 * u3 * 8.8e+1 + t3 * t5 * t6 * u4 * 8.8e+1 + t3 * t6 * t13 * u2 * 1.1e+2 - t3 * t6 * t13 * u4 * 1.1e+2 + t2 * t5 * t20 * u1 * 5.5e+1 - t2 * t5 * t20 * u3 * 5.5e+1 + pitch_dot_t * t2 * t3 * t6 * yaw_dot_t * 1.012e+3 + pitch_dot_t * t3 * t6 * t14 * yaw_dot_t * 1.012e+3 - roll_dot_t * t5 * t13 * t20 * yaw_dot_t * 5.06e+2 - pitch_dot_t * roll_dot_t * t2 * t3 * t5 * t6 * 1.012e+3)) / 5.52e+2])
+    mt2 = [(t23 * (t5 * t47 + t5 * t59 + t9 * t13 * t16 * 5.06e+2 - t11 * t13 * t16 * 5.06e+2 - t9 * t13 * t20 * 5.06e+2 + t11 * t13 * t20 * 5.06e+2 - 
+                   t3 * t6 * u2 * 1.1e+2 + t3 * t6 * u4 * 1.1e+2 + t2 * t45 * u1 - t3 * t5 * t6 * u1 * 8.8e+1 + t3 * t5 * t6 * u2 * 8.8e+1 - 
+                   t3 * t5 * t6 * u3 * 8.8e+1 + t3 * t5 * t6 * u4 * 8.8e+1 + t3 * t6 * t13 * u2 * 1.1e+2 - t3 * t6 * t13 * u4 * 1.1e+2 + 
+                   t2 * t5 * t20 * u1 * 5.5e+1 - t2 * t5 * t20 * u3 * 5.5e+1 + pitch_dot_t * t2 * t3 * t6 * yaw_dot_t * 1.012e+3 + pitch_dot_t * t3 * t6 * t14 * yaw_dot_t * 1.012e+3 - 
+                   roll_dot_t * t5 * t13 * t20 * yaw_dot_t * 5.06e+2 - pitch_dot_t * roll_dot_t * t2 * t3 * t5 * t6 * 1.012e+3)) / 5.52e+2]
 
-    mt3 = np.array([t22 * (t48 + t55 + t56 + t60 + t15 * u1 * 4.4e+1 - t15 * u2 * 4.4e+1 + t15 * u3 * 4.4e+1 - t15 * u4 * 4.4e+1 - t5 * t20 * u2 * 5.5e+1 + t5 * t20 * u4 * 5.5e+1 - pitch_dot_t * roll_dot_t * t2 * t20 * 5.06e+2 - t2 * t3 * t6 * u1 * 1.1e+2 + t2 * t3 * t6 * u3 * 1.1e+2 - t3 * t5 * t6 * t11 * t13 * 1.012e+3 + pitch_dot_t * t2 * t5 * t20 * yaw_dot_t * 5.06e+2 + roll_dot_t * t3 * t6 * t13 * yaw_dot_t * 1.012e+3) * (-1.0 / 5.52e+2)])
+    mt3 = [t22 * (t48 + t55 + t56 + t60 + t15 * u1 * 4.4e+1 - t15 * u2 * 4.4e+1 + t15 * u3 * 4.4e+1 - t15 * u4 * 4.4e+1 - t5 * t20 * u2 * 5.5e+1 + 
+                  t5 * t20 * u4 * 5.5e+1 - pitch_dot_t * roll_dot_t * t2 * t20 * 5.06e+2 - t2 * t3 * t6 * u1 * 1.1e+2 + 
+                  t2 * t3 * t6 * u3 * 1.1e+2 - t3 * t5 * t6 * t11 * t13 * 1.012e+3 + pitch_dot_t * t2 * t5 * t20 * yaw_dot_t * 5.06e+2 + 
+                  roll_dot_t * t3 * t6 * t13 * yaw_dot_t * 1.012e+3) * (-1.0 / 5.52e+2)]
 
-    mt4 = np.array([
+    mt4 = [
         t23 * (t46 + t54 + t61 + t62 + t3 * t6 * u1 * 8.8e+1 - t3 * t6 * u2 * 8.8e+1 + 
                 t3 * t6 * u3 * 8.8e+1 - t3 * t6 * u4 * 8.8e+1 - t2 * t20 * u1 * 5.5e+1 + 
                 t2 * t20 * u3 * 5.5e+1 - t5 * t11 * t13 * t20 * 5.06e+2 + 
@@ -106,9 +113,9 @@ def quadrotor_grad(in1, in2):
         t7 * t25 * t32, 
         t3 * t5 * t25 * (-1.0 / 2.0), 
         et1 + et2
-    ])
+    ]
 
-    mt5 = np.array([
+    mt5 = [
         (t22 * (t5 * u1 * 6.0e+1 - t5 * u3 * 6.0e+1 + t40 * u1 + t41 * u4 + t45 * u3 - t11 * t14 * t16 * 5.06e+2 + 
                 t2 * t11 * t16 * t18 * 1.012e+3 - t2 * t3 * t6 * u2 * 5.5e+1 + roll_dot_t * t2 * t5 * yaw_dot_t * 1.104e+3 + 
                 pitch_dot_t * roll_dot_t * t3 * t5 * t6 * 5.06e+2 + pitch_dot_t * t3 * t6 * t13 * yaw_dot_t * 5.06e+2 - 
@@ -117,9 +124,9 @@ def quadrotor_grad(in1, in2):
                     t31 * u1 + t31 * u3 + t42 * u2 + roll_dot_t * t13 * yaw_dot_t * 5.52e+2 - t3 * t5 * t6 * u4 * 5.5e+1 + 
                     pitch_dot_t * roll_dot_t * t2 * t3 * t6 * 5.06e+2 - pitch_dot_t * t2 * t3 * t5 * t6 * yaw_dot_t * 5.06e+2)) / 5.52e+2,
         et3 + et4, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    ])
+    ]
 
-    mt6 = np.array([
+    mt6 = [
         (t25 * (t4 * t6 - t3 * t5 * t7)) / 2.0,
         (t25 * (t6 * t7 + t3 * t4 * t5)) / 2.0,
         0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -127,9 +134,9 @@ def quadrotor_grad(in1, in2):
         t22 * (t13 * yaw_dot_t * 5.52e+2 - t13 * t16 * yaw_dot_t * 5.06e+2 + pitch_dot_t * t2 * t3 * t6 * 5.06e+2) * (-1.0 / 5.52e+2),
         (t23 * (t53 + pitch_dot_t * t2 * 4.6e+1 + t3 * t6 * t13 * yaw_dot_t * 5.06e+2)) / 5.52e+2,
         0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0
-    ])
+    ]
 
-    mt7 = np.array([
+    mt7 = [
         (t23 * (roll_dot_t * t17 * 2.3e+1 + t2 * yaw_dot_t * 1.058e+3 - t2 * t16 * yaw_dot_t * 5.06e+2 - 
                 t14 * t16 * yaw_dot_t * 5.06e+2 + pitch_dot_t * t3 * t6 * t13 * 1.012e+3 + roll_dot_t * t2 * t5 * t16 * 5.06e+2)) / 5.52e+2,
         t22 * (roll_dot_t * t2 * t3 * t6 * 5.06e+2 - t2 * t3 * t5 * t6 * yaw_dot_t * 5.06e+2) * (-1.0 / 5.52e+2),
@@ -138,18 +145,18 @@ def quadrotor_grad(in1, in2):
         0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
         t23 * (t53 - pitch_dot_t * t2 * 1.058e+3 + pitch_dot_t * t14 * t16 * 5.06e+2 + t3 * t6 * t13 * yaw_dot_t * 1.012e+3 - 
                 roll_dot_t * t3 * t5 * t6 * t13 * 5.06e+2) * (-1.0 / 5.52e+2)
-    ])
+    ]
 
-    mt8 = np.array([
+    mt8 = [
         t22 * (roll_dot_t * t13 * 5.52e+2 - roll_dot_t * t13 * t16 * 5.06e+2 + t5 * t13 * t16 * yaw_dot_t * 1.012e+3 - 
                 pitch_dot_t * t2 * t3 * t5 * t6 * 5.06e+2) * (-1.0 / 5.52e+2),
         (t23 * (pitch_dot_t * t17 * 5.29e+2 - pitch_dot_t * t2 * t5 * t16 * 5.06e+2 + roll_dot_t * t3 * t6 * t13 * 5.06e+2 - 
                 t3 * t5 * t6 * t13 * yaw_dot_t * 1.012e+3)) / 5.52e+2
-    ])
+    ]
 
     A = np.reshape(np.array([mt1, mt2, mt3, mt4, mt5, mt6, mt7, mt8]), (12, 12))
 
-    mt9 = np.array([
+    mt9 = [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 
         t63, t64, t32, 
         t23 * (t26 + t44 + t52) * (-1.0 / 5.52e+2), 
@@ -169,8 +176,8 @@ def quadrotor_grad(in1, in2):
         t63, t64, t32, 
         (t23 * (t26 + t36 + t44 + t51 + 1.15e+2)) / 5.52e+2, 
         (t22 * (t31 + t42)) / 5.52e+2
-    ])
-    mt10 = np.array([(t23 * (t27 + t35 + t45 + 9.2e+1)) / 5.52e+2])
+    ]
+    mt10 = [(t23 * (t27 + t35 + t45 + 9.2e+1)) / 5.52e+2]
     B = np.reshape(np.concatenate((mt9, mt10)), (12, 4))
     
     return A, B

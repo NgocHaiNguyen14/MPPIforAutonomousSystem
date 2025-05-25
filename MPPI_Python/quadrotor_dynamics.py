@@ -4,19 +4,20 @@ def quadrotor(in1, in2):
 # in1: states
 # in2: control inputs
 
-    pitch_t = in1[4, :]
-    pitch_dot_t = in1[10, :]
-    roll_t = in1[3, :]
-    roll_dot_t = in1[9, :]
-    u1 = in2[0, :]
-    u2 = in2[1, :]
-    u3 = in2[2, :]
-    u4 = in2[3, :]
-    x_dot_t = in1[6, :]
-    y_dot_t = in1[7, :]
-    yaw_t = in1[5, :]
-    yaw_dot_t = in1[11, :]
-    z_dot_t = in1[8, :]
+    pitch_t = in1[4]
+    pitch_dot_t = in1[10]
+    roll_t = in1[3]
+    roll_dot_t = in1[9]
+    x_dot_t = in1[6]
+    y_dot_t = in1[7]
+    yaw_t = in1[5]
+    yaw_dot_t = in1[11]
+    z_dot_t = in1[8]
+
+    u1 = in2[0]
+    u2 = in2[1]
+    u3 = in2[2]
+    u4 = in2[3]
 
     t2 = np.cos(pitch_t)
     t3 = np.cos(roll_t)
@@ -44,7 +45,7 @@ def quadrotor(in1, in2):
         (t16 * (t6 * t7 + t3 * t4 * t5)) / 2.0,
         -t16 * (t4 * t6 - t3 * t5 * t7) / 2.0,
         (t2 * t3 * t16) / 2.0 - 9.81e2 / 1.0e2
-    ])
+    ]).reshape(-1, 1)
 
     mt2 = np.array([
         (t15 * (
@@ -96,5 +97,6 @@ def quadrotor(in1, in2):
     ])
 
     f = np.vstack((mt1, mt2, mt3, mt4))
-    return f
+    flatten_list = f.flatten().tolist()
+    return flatten_list
 
