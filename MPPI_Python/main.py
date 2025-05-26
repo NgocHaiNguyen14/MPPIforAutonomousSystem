@@ -21,24 +21,20 @@ output: next state vector
 
 # Cost function definitions
 
-def cost(x, u):
+def cost(x, u, Q, R):
     x_flat = np.array(x)
     u = np.array(u).reshape(-1)
 
-    Q = np.eye(len(x_flat))
-    R = 0*np.eye(len(u))
-
     return x_flat.T @ Q @ x_flat + u.T @ R @ u
 
-def final_cost(x, xd):
+def final_cost(x, xd, Qf):
     x_flat = np.array(x)
     xd_flat = np.array(xd)
 
-    Qf = 1000 * np.eye(len(x_flat))
     return (x_flat - xd_flat) @ Qf @ (x_flat - xd_flat).T
 
 """
-Forward pass or roll-out: shoot the dynamics
+roll_out: shoot the dynamics
 
 xtraj: trajectory ((step + 1) x 12).
 The first position is initial condition. Last is desired target
@@ -50,7 +46,7 @@ output: new xtraj ((step + 1) x 12)
 
 # MPPI: Dynamics & Cost
 
-def forward_pass(x0, xtraj, utraj, dt):
+def roll_out(x0, xtraj, utraj, dt):
     xtraj[0] = x0
     for i in range(len(utraj)):
         xdot = quadrotor(xtraj[i], utraj[i])
@@ -59,8 +55,21 @@ def forward_pass(x0, xtraj, utraj, dt):
 
     return xtraj
 
+
 """
-Backward pass: calculate the trajectory cost
+Backward pass:
+
+xtraj: trajectory ((step + 1) x 12).
+The first position is initial condition. Last is desired target
+utraj: control input vector (step x 4)
+
+output: new xtraj ((step + 1) x 12)
+
+"""
+
+
+"""
+total_cost: calculate the trajectory cost
 xtraj: trajectory (step+1 x 12)
 The first position is initial condition. Last is desired target
 utraj: control inputs (step x 4)
@@ -68,12 +77,13 @@ utraj: control inputs (step x 4)
 output: cost of trajectory
 """
 
-def backward_pass(xtraj, utraj, xd):
+def total_cost(xtraj, utraj, xd, Q, R, Qf):
     traj_cost = 0
     for i in range(len(utraj)):
-        traj_cost += cost(xtraj[i], utraj[i])
-    traj_cost += final_cost(xtraj[-1], xd)
+        traj_cost += cost(xtraj[i], utraj[i], Q, R)
+    traj_cost += final_cost(xtraj[-1], xd, Qf)
     return traj_cost
+
 
 # Sampling and Control
 
@@ -93,13 +103,16 @@ def gen_sample(N, scale, nu, step):
 
 """
 Update u: update inputs based on cost 
+
+HYPER-PARAMETER: LAMDA
+
 input: rollouts of utraj (step x nu x N) and cost(1xN)
 
 output: optimal utraj(step x nu x 1)
 """
 
 def optimal_u(rutraj, cost):
-    lamda = 100000
+    lamda = 10000
     weights = np.exp(-np.array(cost) / lamda)
     weights_sum = np.sum(weights)
     u = (rutraj @ weights) / weights_sum
@@ -107,49 +120,32 @@ def optimal_u(rutraj, cost):
 
 # Main
 
-# Boundary conditions
+# iLQR params
+Q = np.eye(len(x_flat))
+R = 0*np.eye(len(u))
+
+Qf = np.diag([10000, 10000, 10000,    # e.g. position x, y, z
+   10, 10, 10,          # e.g. velocity x, y, z
+   100, 100, 100,       # e.g. orientation roll, pitch, yaw
+   1, 1, 1])             # e.g. bias or other states
+
+# MPPI Params
+N = 1000         # Number of MPPI samples
+nu = 4            # 4 ang vel^2 inputs: w1, w2, w3, w4
+scale = 10         # Force scale
+
+# Trajectories params
 x0 = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 xd = [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-# Control input params
-steps = 50        # Number of time steps
-dt = 0.1          # Time step in second
-N = 1000         # Number of MPPI samples
-nu = 4            # 4 ang vel^2 inputs: w1, w2, w3, w4
-scale = 5         # Force scale
+t = 0.1
+steps = 10        # Number of time steps
+dt = t/steps         # Time step in second
+
+u_base = iLQR(x0, xd, dt, Q, R, Qf)
 
 u_opt = []
 
-for i in range(steps):
-    print("solving time step #", i+1)
-    # Reset trajectory
-    xtraj = [x0 for _ in range(steps + 1)]
 
-    # Generate force input samples
-    rutraj = gen_sample(N, scale, nu, steps)
 
-    # Use previously optimized values for already-computed steps
-    if len(u_opt) > 0:
-        for j in range(min(len(u_opt), rutraj.shape[0])):
-            rutraj[j] = np.tile(u_opt[j].reshape(4, 1), (1, N))
-
-    # Evaluate each sample trajectory
-    traj_cost = []
-    for ru in rutraj.transpose(2, 0, 1):  # (N x steps x 4)
-        new_xtraj = forward_pass(x0, xtraj, ru, dt)
-        traj_cost.append(backward_pass(new_xtraj, ru, xd))
-
-    # Choose best u
-    all_u = optimal_u(rutraj, traj_cost)
-    u_opt.append(all_u[i])
-
-# Final roll-out
-print("Calculating optimal u...")
-final_u = u_opt
-print("Optimal u: ", final_u)
-
-final_x = forward_pass(x0, xtraj, final_u, dt)
-optimal_cost = backward_pass(final_x, final_u, xd)
-
-print("Final cost:", optimal_cost)
