@@ -3,18 +3,17 @@ import numpy as np
 def quadrotor_grad(in1, in2):
 # in1: states
 # in2: control inputs
-
-    pitch_t = in1[4]
-    pitch_dot_t = in1[10]
-    roll_t = in1[3]
-    roll_dot_t = in1[9]
-    yaw_t = in1[5]
-    yaw_dot_t = in1[11]
+    pitch_t = in1[4][0]
+    pitch_dot_t = in1[10][0]
+    roll_t = in1[3][0]
+    roll_dot_t = in1[9][0]
+    yaw_t = in1[5][0]
+    yaw_dot_t = in1[11][0]
     
-    u1 = in2[0]
-    u2 = in2[1]
-    u3 = in2[2]
-    u4 = in2[3]
+    u1 = in2[0][0]
+    u2 = in2[1][0]
+    u3 = in2[2][0]
+    u4 = in2[3][0]
 
     t2 = np.cos(pitch_t)
     t3 = np.cos(roll_t)
