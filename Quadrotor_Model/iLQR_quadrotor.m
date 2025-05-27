@@ -1,50 +1,7 @@
-function iLQR_quadrotor
-
-    GRADIENTS=@quadrotor_grad;
-    DYNAMICS=@quadrotor;
-
-    T = 2.5; %time horizon
-    dt = 0.05;%time step
-    N = floor(T/dt);% number of time steps
-    nX = 12;%number of states
-    nU = 4;%number of inputs
-    
-    t = zeros(1,N);%time
-    x = zeros(nX,N);%state
-    u = zeros(nU,N);%input
-    
-    %initial conditions
-    x0= [0;0;0;0;0;0;0;0;0;0;0;0];
-    
-    xtraj=zeros(nX,N);%state-trajectory
-    utraj=zeros(nU,N-1);%input-trajectory
-    ktraj= zeros(nU,N);%gain-trajectory
-    Ktraj = zeros(nU,nX,N);%gain-trajectory
-    Q = 0*eye(nX); %fill in state cost matrix
-    Qf= 10*eye(nX); %fill in final state cost matrix
-    R = 0.01*eye(nU);%fill in input state matrix
-    xd = [1;10;5;0;0;0;0;0;0;0;0;0];%desired state
-    
-    %call iterative lqr
-    [xtraj, utraj, ktraj, Ktraj] =ilqr(x0, xtraj, utraj, ktraj, Ktraj,N,dt, Q, R, Qf,xd, DYNAMICS, GRADIENTS);
-    
-    x(:,1)=[0;0;0;0;0;0;0;0;0;0;0;0];
-    
-    %simulate the cart-pole system
-    for k =1:N-1
-        x(:,k+1)=x(:,k)+ (DYNAMICS(x(:,k),utraj(:,k)))*dt;
-        t(k+1) = t(k)+dt;
-    end
-    
-    x
-    
-
-end
-
 %==========================================================================
 %   iterativeLQR function
 %==========================================================================
-function [xtraj, utraj, ktraj, Ktraj] = ilqr(x0, xtraj, utraj, ktraj, Ktraj,N,dt, Q, R, Qf,xd, DYNAMICS, GRADIENTS)
+function [xtraj, utraj, ktraj, Ktraj] = iLQR_quadrotor(x0, xtraj, utraj, ktraj, Ktraj,N,dt, Q, R, Qf,xd, DYNAMICS, GRADIENTS)
     J=1e6;
     Jlast = J;
     for i=1:1000
@@ -166,8 +123,7 @@ function [xtraj, utraj, J] = forward_pass(x0, xtraj0, utraj0, ktraj, Ktraj, N, d
             x=x+xdot*dt;%integrate state
         end
         xtraj(:,N) = x;
-        J = J+final_cost(x,utraj(:,N-1),xd,Qf);%compute total cost
-        J0
+        J = J+final_cost(x,utraj(:,N-1),xd,Qf);%compute total cost    
         alpha = alpha/2;
     end
 end
