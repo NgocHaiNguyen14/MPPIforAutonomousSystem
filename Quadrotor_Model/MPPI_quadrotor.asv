@@ -12,10 +12,10 @@ kf = 1;
 L = 0.25;
 b = 0.2;
 
-A = [kf, kf, kf, kf; ...
-    0, L*kf, 0, -L*kf; ...
-    -L*kf, 0, L*kf, 0; ...
-    b, -b, b, -b];
+A = [kf kf kf kf; ...
+0 L*kf 0 -L*kf; ...
+-L*kf 0 L*kf 0; ...
+b -b b -b];
 
 %initial conditions
 x0= [0;0;0;0;0;0;0;0;0;0;0;0];
@@ -59,7 +59,7 @@ xout = xref;
 optimal_u = [];%input
 
 x = x0;
-steps = 5;
+steps = 2;
 
 Q_MPPI = 0*diag([...
     0.2, 0.2, 0.2, ...    % x, y, z (position)
@@ -114,7 +114,7 @@ end
 function step_u = MPPI(Q, R, Qf, x, xd, uref, steps, dt, DYNAMICS)
     num_samples = 10000;
     lambda = 100;
-    var = 30;
+    var = 20;
     rho = 10;
     nU = size(uref, 1);
     nX = size(x,1);
