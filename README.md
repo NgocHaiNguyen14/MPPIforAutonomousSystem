@@ -1,34 +1,58 @@
 # MPPI_forAutonomousSystem
 
-Algorithm
+Algorithm MPPI-with-iLQR
 
-init LQR params: Q, R, Qf
-init MPPI params: lambda, N, scale
-init traj params: x0, xd, u_opt = [], t, steps
-dt = t / steps
+# --- Initialization ---
+Initialize LQR parameters: Q, R, Qf
+Initialize MPPI parameters: λ (lambda), K (num_samples), N (time steps), CovU (noise std)
+Initialize trajectory parameters:
+    x0 (initial state), xd (desired state), 
+    u_opt = [] (optimal control sequence), 
+    T (total time), steps (planning horizon)
+Set dt = T / steps
 
-solve u_baseline by iLQR
+Initialize utraj = [u0, ..., uN-1]
 
-for step in 0 to steps-1:
+# --- MPPI Optimization Loop ---
+while task not done:
 
-    generate N perturbations delta_u ~ N(0, scale)
-    traj_cost = []
+	x = getCurrentState()
+	Initialize Straj storing cost of rollouts
+	for k = 1 to K
+		du = getRandomRollouts du E R^(nUxN-1)
+		store du to DU cell
+		Initalize xtraj E R^(nX x N)
+		for t = 1:N-1
+			xtraj(t+1) = xtraj(t) + f(xtraj(t), utraj(t) + du(t))*dt
+			Straj(k) += runningCost(xtraj(t), xd, utraj(t), du(t))
+		endfor
+		
+		Straj(k) += finalCost(xtraj(N),xd)
+	endfor
+	
+	minS = min(Straj)
+	
+	for t = 1:N-1
+		Initalize sum of weights(ss) and sum of weight*inputs(su) = 0
+		for k = 1:K
+			ss += exp(-1/lambda*Straj(k) - minS)
+			su += exp(-1/lambda*Straj(k) - minS)*DU{k}(:,t)
+		endfor
+		
+		update nominal input utraj(t) += su/ss
+	endfor
+	
+	Execute utraj(1)
+	
+	Shift the nominal input
+	for t = 2:N-1
+		utraj(t-1) = utraj(t)
+	endfor
+	
+	initialize utraj(N-1)
+	
+endwhile
+	
 
-    for i in 0 to N-1:
-        utraj_i = u_baseline + delta_u[i]
-        
-        if len(u_opt) > 0:
-            utraj_i[step] = u_opt[-1]
-        
-        xtraj_i = forward_pass(x0, utraj_i, dt)
-        cost_i = trajectory_cost(xtraj_i, utraj_i, xd)
-        traj_cost.append(cost_i)
-    
-    weights = exp(-1/lambda * traj_cost)
-    step_u = sum_i weights[i] * (u_baseline[step] + delta_u[i, step]) / sum(weights)
-
-    u_opt.append(step_u)
-
-endfor
 
 
