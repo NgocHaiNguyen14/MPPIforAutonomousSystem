@@ -1,9 +1,9 @@
 # MPPI_forAutonomousSystem
 
-Algorithm MPPI-with-iLQR
+Algorithm MPPI
 
 # --- Initialization ---
-Initialize LQR parameters: Q, R, Qf
+Initialize cost parameters: Q, R, Qf
 Initialize MPPI parameters: λ (lambda), K (num_samples), N (time steps), CovU (noise std)
 Initialize trajectory parameters:
     x0 (initial state), xd (desired state), 
