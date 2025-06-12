@@ -1,16 +1,15 @@
-GRADIENTS=@quadrotor_grad;
+
 DYNAMICS=@quadrotor;
 
-T = 5; %time horizon
-dt = 0.05;%time step
-N = floor(T/dt);% number of time steps
 nX = 12;%number of states
 nU = 4;%number of inputs
 
 % quadrotor w^2 to force/torque matrix
-kf = 1;
-L = 0.25;
-b = 0.2;
+kf = 8.55*(1e-6)*91.61;
+L = 0.17;
+b = 1.6*(1e-2)*91.61;
+m = 0.716;
+g = 9.81;
 
 A = [kf, kf, kf, kf; ...
     0, L*kf, 0, -L*kf; ...
@@ -19,163 +18,82 @@ A = [kf, kf, kf, kf; ...
 
 %initial conditions
 x0= [0;0;0;0;0;0;0;0;0;0;0;0];
+xd= [10;10;10;0;0;0;0;0;0;0;0;0];
 
-xref=zeros(nX,N);%state-trajectory
-uref=zeros(nU,N-1);%input-trajectory
-ktraj= zeros(nU,N);%gain-trajectory
-Ktraj = zeros(nU,nX,N);%gain-trajectory
-Q = 0*diag([...
-    0.2, 0.2, 0.2, ...    % x, y, z (position)
-     0.1,  0.1,  0.1, ...    % vx, vy, vz (velocity)
-     0.2,  0.2,  0.2, ...   % roll, pitch, yaw (orientation)
-     0.1,  0.1,  0.1]);  % wx, wy, wz (angular velocity)
-Qf = 0.01*diag([...
-    10, 10, 10, ...  % x, y, z
-     1,  1,  1, ... % vx, vy, vz
-     1,  1,  1, ... % roll, pitch, yaw
-      1,   1,   1]); % wx, wy, wz
-R = 0*diag([0.01, 0.01, 0.01, 0.01]); % penalize control effort (w1² to w4²)
+% Initialization
+num_samples = 1000;
+N = 150;
 
-xd = [1;10;5;0;0;0;0;0;0;0;0;0];%desired state
+utraj = zeros(nU, N-1);
+uOpt = [];
+xf = [];
+dt = 0.02;
+lambda = 10;
+nu = 1000;
+covu = diag([2.5,5*1e-3,5*1e-3,5*1e-3]);
 
-%call iterative lqr
-disp("1. Solving iterative LQR")
-[xref, uref, kref, Kref] =iLQR_quadrotor(x0, xref, uref, ktraj, Ktraj,N,dt, Q, R, Qf,xd, DYNAMICS, GRADIENTS);
-
-%Output trajectory with noise
-% for i = 1:size(uref,2)
-%     xout(:,i+1) = xout(:,i) + dynamics_noise(xout(:,i),uref(:,i), DYNAMICS)*dt;
-% end
-
-% plot_traj(xref, xout)
-
-disp("Solved iLQR")
-disp("2. Start MPPI Optimization")
-
-%Setup for MPPI
-t = zeros(1,N);%time
-xtraj = zeros(nX,N);%state
-xout = xref;
-optimal_u = [];%input
+xtraj = zeros(nX, N);
+R = lambda*inv(covu);
 
 x = x0;
-steps = 5;
 
-Q_MPPI = 0*diag([...
-    0.2, 0.2, 0.2, ...    % x, y, z (position)
-     0.1,  0.1,  0.1, ...    % vx, vy, vz (velocity)
-     0.2,  0.2,  0.2, ...   % roll, pitch, yaw (orientation)
-     0.1,  0.1,  0.1]);  % wx, wy, wz (angular velocity)
-Qf_MPPI = 100*diag([...
-    10, 10, 10, ...  % x, y, z
-     1,  1,  1, ... % vx, vy, vz
-     1,  1,  1, ... % roll, pitch, yaw
-      1,   1,   1]); % wx, wy, wz
-R_MPPI = 0*diag([0.01, 0.01, 0.01, 0.01]); % penalize control effort (w1² to w4²)
-
-for i = 1:N-1
-    xtraj(:,i) = x;
-    incr = i+steps;
-    if incr > N
-       incr = N;
-       steps = steps - 1;
-    end
-
-    u = MPPI(Q_MPPI,R_MPPI,Qf_MPPI,x, xref(:,i+steps), uref(:,i:i+steps-1), steps, dt, DYNAMICS);
-
-    optimal_u(:,i) = u;
-
-    [xdot, noise] = dynamics_noise(x, u, DYNAMICS);
-    x = x + xdot*dt;
-    xout(:,i+1) = xout(:,i) +(DYNAMICS(xref(:,i), uref(:,i)) + noise)*dt;
-end
-
-xtraj(:,N) = x;
-
-plot_traj(xref, xout)
-plot_traj(xref, xtraj)
-
-%% Helper Functions %%
-
-function [dxout, noise] = dynamics_noise(xin, u, DYNAMICS)
-    noise_std = 2;
-
-    % Initialize noise to zero
-    noise = zeros(size(xin));
-
-    % Add Gaussian noise only to the position states (first 3 rows)
-    noise(1:3) = noise_std * randn(3, 1);
-    %noise(1:3) = noise_std;
-
-    % Compute next state with added noise on position
-    dxout = DYNAMICS(xin, u) + noise;
-end
-
-function step_u = MPPI(Q, R, Qf, x, xd, uref, steps, dt, DYNAMICS)
-    num_samples = 10000;
-    lambda = 100;
-    var = 30;
-    rho = 10;
-    nU = size(uref, 1);
-    nX = size(x,1);
-
-    xtraj = zeros(nX, steps);
-    xtraj(:,1) = x;
-
-    ss = [];
-    su = [];
-
-    for i = 1: num_samples
-        du = du_rollouts(var, nU, steps, rho, dt);
-        u = uref + du;
-        u = max(u, 0);
-        new_xtraj = rollouts(x, xtraj, u, dt, DYNAMICS);
-        rolloutCost = traj_cost(xd, new_xtraj, u, steps, Q, R, Qf, dt);
-        ss(i) = exp(-1/lambda * rolloutCost);
-        su(:,i) = ss(i) * u(:,1);
-    end
-
-    step_u =  sum(su,2) / sum(ss);
-
-end
-
-%% ROLLOUTS delta u
-function du = du_rollouts(var, nU, N, rho, dt)
-    % Generate thrust rollout: 1 × N
-    du = sqrt(var) * randn(nU, N) / (sqrt(rho) * sqrt(dt));
+%% Run MPPI Optimization
+for iter = 1:500
+    xf = [xf,x]; % Append the simulated trajectory
+    Straj = zeros(1,num_samples); % Initialize cost of rollouts
     
-end
-
-%% FORWARD DYNAMICS
-function new_xtraj = rollouts(x0, xtraj, u, dt, DYNAMICS)
-    new_xtraj = xtraj;
-    new_xtraj(:,1) = x0;
-    
-    for i = 1:size(u,2)
-        [xdot, noise] = dynamics_noise(new_xtraj(:,i), u(:,i), DYNAMICS);
-        new_xtraj(:,i+1) = new_xtraj(:,i) + xdot * dt;
-    end
-end
-
-%% COST OF TRAJECTORY
-function total_cost = traj_cost(xd, traj, u, N, Q, R, Qf, dt)
-    total_cost = 0;
-    
-    for i = 1:N-1
-        total_cost = total_cost + cost(traj(:,i), u(:,i), Q, R, dt);
+    % Start the rollouts and compute rollout costs
+    for k = 1:num_samples
+        du = covu*randn(nU, N-1);
+        dU{k} = du;
+        xtraj = [];
+        xtraj(:,1) = x;
+        for t = 1:N-1
+            u = utraj(:,t);
+            xtraj(:,t+1) = xtraj(:,t) + DYNAMICS(xtraj(:,t), u+du(:,t))*dt;
+            Straj(k) = Straj(k) + runningCost(xtraj(:,t), xd, R, u, du(:,t), nu);
+        end
+        Straj(k) = Straj(k) + finalCost(xtraj(:,N), xd);
     end
     
-    total_cost = total_cost + final_cost(traj(:,N), xd, Qf);
+    minS = min(Straj) % Minimum rollout cost
+    
+    % Update the nominal inputs
+    for t = 1:N-1
+        ss = 0;
+        su = 0;
+        for k = 1:num_samples
+            ss = ss + exp(-1/lambda*(Straj(k)-minS));
+            su = su + exp(-1/lambda*(Straj(k)-minS))*dU{k}(:,t);
+        end
+        
+        utraj(:,t) = utraj(:,t) + su/ss;
+    end
+    
+    % Execute the utraj(0)
+    x = x + DYNAMICS(x, utraj(:,1))*dt;
+    uOpt = [uOpt, utraj(:,1)];
+    
+    % Shift the nominal inputs 
+    for t = 2:N-1
+        utraj(:,t-1) = utraj(:,t);
+    end
+    utraj(:,N-1) = [0;0;0;0];
+    
+    distance = norm(x(1:3)-xd(1:3)) %Current distance to target
 end
 
-function J = cost(x, u, Q, R, dt)
-    J = (x'*Q*x+u'*R*u)*dt;
+%% Helper functions
+function J = runningCost(x, xd, R, u, du, nu)
+    Q = diag([2.5, 2.5, 20, 1, 1, 15, zeros(1, 6)]);
+    qx = (x-xd)'*Q*(x-xd);
+    J = qx + 1/2*u'*R*u + (1-1/nu)/2*du'*R*du + u'*R*du;
 end
 
-function J = final_cost(x, xd, Qf)
-    J = (x-xd)'*Qf*(x-xd);
+function J = finalCost(xT,xd)
+    Qf = 20*diag([2.5, 2.5, 20, 1, 1, 15, zeros(1, 6)]);
+    J = (xT-xd)'*Qf*(xT-xd);
 end
-
 
 function plot_traj(xtraj, noisyTraj)
     % Extract positions
