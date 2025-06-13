@@ -1,5 +1,5 @@
 function f = quadrotor(s,u)
-m = 0.716;
+m = 0.2;
 g = 9.81;
 J = diag([7*1e-3, 7*1e-3, 12*1e-3]);
 e3 = [0;0;1];

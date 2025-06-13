@@ -1,8 +1,9 @@
-DYNAMICS=@quadrotor;
 
-nX = 12;%number of states
+DYNAMICS=@quadload;
+
+nX = 16;%number of states
 nU = 4;%number of inputs
- 
+
 % quadrotor w^2 to force/torque matrix
 kf = 8.55*(1e-6)*91.61;
 L = 0.17;
@@ -16,8 +17,8 @@ A = [kf, kf, kf, kf; ...
     b, -b, b, -b];
 
 %initial conditions
-x0= [0;0;0;0;0;0;0;0;0;0;0;0];
-xd= [10;10;10;0;0;0;0;0;0;0;0;0];
+x0= [0;0;0;0;0;0;0;0;0;0;0;0;0;0;0;0];
+xd= [10;10;10;0;0;0;0;0;0;0;0;0;0;0;0;0];
 
 % Initialization
 num_samples = 1000;
@@ -35,9 +36,10 @@ xtraj = zeros(nX, N);
 R = lambda*inv(covu);
 
 x = x0;
+distance = inf;
 
 %% Run MPPI Optimization
-for iter = 1:500
+while distance < 0.5
     xf = [xf,x]; % Append the simulated trajectory
     Straj = zeros(1,num_samples); % Initialize cost of rollouts
     
@@ -45,7 +47,6 @@ for iter = 1:500
     for k = 1:num_samples
         du = covu*randn(nU, N-1);
         dU{k} = du;
-        xtraj = [];
         xtraj(:,1) = x;
         for t = 1:N-1
             u = utraj(:,t);
@@ -54,8 +55,9 @@ for iter = 1:500
         end
         Straj(k) = Straj(k) + finalCost(xtraj(:,N), xd);
     end
-    
+   
     minS = min(Straj) % Minimum rollout cost
+    Straj(isnan(Straj)) = 1e3*minS;
     
     % Update the nominal inputs
     for t = 1:N-1
@@ -84,13 +86,13 @@ end
 
 %% Helper functions
 function J = runningCost(x, xd, R, u, du, nu)
-    Q = diag([2.5, 2.5, 20, 1, 1, 15, zeros(1, 6)]);
+    Q = diag([2.5, 2.5, 20, 1, 1, 15, zeros(1, 10)]);
     qx = (x-xd)'*Q*(x-xd);
     J = qx + 1/2*u'*R*u + (1-1/nu)/2*du'*R*du + u'*R*du;
 end
 
 function J = finalCost(xT,xd)
-    Qf = 20*diag([2.5, 2.5, 20, 1, 1, 15, zeros(1, 6)]);
+    Qf = 20*diag([2.5, 2.5, 20, 1, 1, 15, zeros(1, 10)]);
     J = (xT-xd)'*Qf*(xT-xd);
 end
 
