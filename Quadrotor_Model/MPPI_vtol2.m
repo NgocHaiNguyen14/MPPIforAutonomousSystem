@@ -27,7 +27,7 @@ max_cost = 100;
 x = x0;
 
 %% Run MPPI Optimization
-for iter = 1:250
+for iter = 1:400
     xf = [xf,x]; % Append the simulated trajectory
     Straj = zeros(1,num_samples); % Initialize cost of rollouts
     
@@ -77,6 +77,10 @@ for iter = 1:250
     
     s = x(1:3) %Current distance to target
     dist = norm(x(1:3) - xd(1:3))
+    if dist < 10
+        fprintf('Target reached! Distance: %.2f m, Iteration: %d\n', dist, iter);
+        break;
+    end
 end
 
 %% Helper functions
