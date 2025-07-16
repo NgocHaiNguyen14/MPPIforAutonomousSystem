@@ -1,4 +1,15 @@
+# This folder contains quadrotor and VTOL simulations with different methods
+## VTOL simulation with MPPI
+- The dynamics model: vtol2.m
+- The MPPI simulation model: MPPI_vtol2.m - to see how the dynamics model changes over iterations.
+- The MPPI simulation model with visualizations: MPPI_vtol2_visualization - to see the trajectory of VTOL and other parameters of the dynamics model.
+
+## VTOL simulation with iLQR
+- The dynamics model: vtol3_quaternion.m - dynamics rotation transferred to dynamics with quaternion
+- The iLQR simulation (with visualization): iLQR_vtol3 - to see the trajectory of VTOL and other parameters of the dynamics model.
+
 ## Usage
+(comment of Kiet)
 
 params = quadrotor_param();
 
