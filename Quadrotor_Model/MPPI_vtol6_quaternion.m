@@ -5,13 +5,16 @@ nU = 4;  % number of inputs
 
 % Initial conditions (quaternion representation)
 % [px, py, pz, vx, vy, vz, qw, qx, qy, qz, wx, wy, wz]
-x0 = [0;0;0;0;0;0;1;0;0;0;0;0;0];  % quaternion starts as [1,0,0,0] (identity)
-xd = [50;50;100;0;0;0.7071;0;0;0;0.7071;0;0;0];  % desired state with identity quaternion
+x0 = [0;0;0;0;0;0;0.7071;0;0;0.7071;0;0;0];  % quaternion starts as [1,0,0,0] (identity)
+xd = [50;50;20;0;0;0;0.7071;0;0;0.7071;0;0;0];  % desired state with identity quaternion
+
+% Define phase targets
+xd_phase1 = [xd(1); xd(2); xd(3); 0;0;0; xd(7:10); 0;0;0];
+xd_phase2 = xd;
 
 % Initialization
-num_samples = 8000;
+num_samples = 1000;
 N = 150;
-a
 utraj = zeros(nU, N-1);
 uOpt = [];
 xf = [];
@@ -27,17 +30,21 @@ max_cost = 100;
 
 x = x0;
 
+phase = 1;
+xd_current = xd_phase1;
 
-% Vertical landing constraints
-position_tolerance = 10;        % meters
-angle_tolerance = 0.75;         % radians (~45 degre
-% es)
-velocity_tolerance = 5;         % m/s for near-zero landing velocity
-angular_velocity_tolerance = 2.5; % rad/s
+% Vertical landing constraints (used in phase 2 primarily)
+position_tolerance_horizontal = 20;     % meters for phase 1, will adjust for phase 2
+position_tolerance_vertical = 10;       % meters
+angle_tolerance = 0.78;                 % radians (~45 degrees)
+velocity_tolerance = 15;                 % m/s for near-zero landing velocity
+angular_velocity_tolerance = 5;       % rad/s
 
-fprintf('=== MPPI VTOL Control with Quaternion Dynamics and Vertical Landing ===\n');
-fprintf('Target position: [%.1f, %.1f, %.1f]\n', xd(1), xd(2), xd(3));
-fprintf('Position tolerance: %.1f m\n', position_tolerance);
+fprintf('=== MPPI VTOL Control with Quaternion Dynamics and Two-Phase Vertical Landing ===\n');
+fprintf('Phase 1: Fly to hover at [%.1f, %.1f, %.1f]\n', xd_phase1(1), xd_phase1(2), xd_phase1(3));
+fprintf('Phase 2: Vertical landing at [%.1f, %.1f, %.1f]\n', xd_phase2(1), xd_phase2(2), xd_phase2(3));
+fprintf('Position tolerance (horizontal): %.1f m (phase 1), 20 m (phase 2)\n', position_tolerance_horizontal);
+fprintf('Position tolerance (vertical): %.1f m\n', position_tolerance_vertical);
 fprintf('Angle tolerance: %.2f rad (%.1f degrees)\n', angle_tolerance, rad2deg(angle_tolerance));
 fprintf('Velocity tolerance: %.1f m/s\n', velocity_tolerance);
 fprintf('Angular velocity tolerance: %.2f rad/s\n', angular_velocity_tolerance);
@@ -80,15 +87,15 @@ for iter = 1:1000
             end
             
             xtraj(:,t+1) = x_next;
-            Straj(k) = Straj(k) + runningCost(xtraj(:,t), xd, R, u, du(:,t), nu);
+            Straj(k) = Straj(k) + runningCost(xtraj(:,t), xd_current, R, u, du(:,t), nu, phase);
         end
-        Straj(k) = Straj(k) + finalCost(xtraj(:,N), xd);
+        Straj(k) = Straj(k) + finalCost(xtraj(:,N), xd_current, phase);
     end
 
     minS = min(Straj); % Minimum rollout cost
     
     if mod(iter, 50) == 1
-        fprintf('Iteration %d: Min cost = %.2f\n', iter, minS);
+        fprintf('Iteration %d (Phase %d): Min cost = %.2f\n', iter, phase, minS);
     end
 
     epsilon = 1e-6;
@@ -138,7 +145,7 @@ for iter = 1:1000
     current_quat = x(7:10);
     current_angular_vel = x(11:13);
     
-    pos_dist = norm(current_pos - xd(1:3));
+    pos_dist = norm(current_pos - xd_current(1:3));
     vel_magnitude = norm(current_vel);
     angular_vel_magnitude = norm(current_angular_vel);
     
@@ -146,43 +153,58 @@ for iter = 1:1000
     [roll, pitch, yaw] = quat2euler(current_quat);
     roll_error = abs(roll);
     pitch_error = abs(pitch);
-    max_angle_error = pitch_error;
+    max_angle_error = max(roll_error, pitch_error);
     
-    % Check altitude constraint: z should be >= z_expected
-    altitude_ok = current_pos(3) >= xd(3);
-    
-    % Display current status every 20 iterations
-    if mod(iter, 20) == 0
-        fprintf('Iter %d: Pos dist=%.2f, Alt=%.2f(>=%.2f), Vel=%.2f, Ang err=%.3f rad (%.1f°), ω=%.2f\n', ...
-                iter, pos_dist, current_pos(3), xd(3), vel_magnitude, max_angle_error, rad2deg(max_angle_error), angular_vel_magnitude);
+    % Phase-specific checks
+    if phase == 1
+        position_ok = pos_dist < position_tolerance_vertical; % Use vertical tol for all in phase 1, since hover
+        altitude_ok = true; % No minimum altitude constraint in phase 1
+        horizontal_tol = position_tolerance_horizontal; % For display
+    else
+        horizontal_tol = 20; % Larger horizontal tolerance in phase 2
+        position_ok = norm(current_pos(1:2) - xd_current(1:2)) < horizontal_tol && ...
+                      abs(current_pos(3) - xd_current(3)) < position_tolerance_vertical;
+        altitude_ok = current_pos(3) >= xd_current(3);
     end
     
-    % Check if all landing criteria are satisfied
-    position_ok = pos_dist < position_tolerance;
-    altitude_ok = altitude_ok; % z >= z_expected
     angle_ok = max_angle_error < angle_tolerance;
     velocity_ok = vel_magnitude < velocity_tolerance;
     angular_velocity_ok = angular_vel_magnitude < angular_velocity_tolerance;
     
+    % Display current status every 20 iterations
+    if mod(iter, 20) == 0
+        fprintf('Iter %d (Phase %d): Pos dist=%.2f, Alt=%.2f(%.2f), Vel=%.2f, Ang err=%.3f rad (%.1f°), ω=%.2f\n', ...
+                iter, phase, pos_dist, current_pos(3), xd_current(3), vel_magnitude, max_angle_error, rad2deg(max_angle_error), angular_vel_magnitude);
+    end
+    
+    % Check if criteria are satisfied
     if position_ok && altitude_ok && angle_ok && velocity_ok && angular_velocity_ok
-        fprintf('\n=== SUCCESSFUL VERTICAL LANDING ===\n');
-        fprintf('Target reached at iteration %d!\n', iter);
-        fprintf('Final position distance: %.2f m\n', pos_dist);
-        fprintf('Final altitude: %.2f m (target: %.2f m)\n', current_pos(3), xd(3));
-        fprintf('Final velocity magnitude: %.2f m/s\n', vel_magnitude);
-        fprintf('Final roll error: %.3f rad (%.1f degrees)\n', roll_error, rad2deg(roll_error));
-        fprintf('Final pitch error: %.3f rad (%.1f degrees)\n', pitch_error, rad2deg(pitch_error));
-        fprintf('Final angular velocity: %.2f rad/s\n', angular_vel_magnitude);
-        break;
+        if phase == 1
+            fprintf('\n=== PHASE 1 COMPLETED: REACHED HOVER POINT ===\n');
+            fprintf('Switching to Phase 2 at iteration %d\n', iter);
+            phase = 2;
+            xd_current = xd_phase2;
+            % Continue the loop without breaking
+        else
+            fprintf('\n=== SUCCESSFUL VERTICAL LANDING ===\n');
+            fprintf('Target reached at iteration %d!\n', iter);
+            fprintf('Final position distance: %.2f m\n', pos_dist);
+            fprintf('Final altitude: %.2f m (target: %.2f m)\n', current_pos(3), xd_current(3));
+            fprintf('Final velocity magnitude: %.2f m/s\n', vel_magnitude);
+            fprintf('Final roll error: %.3f rad (%.1f degrees)\n', roll_error, rad2deg(roll_error));
+            fprintf('Final pitch error: %.3f rad (%.1f degrees)\n', pitch_error, rad2deg(pitch_error));
+            fprintf('Final angular velocity: %.2f rad/s\n', angular_vel_magnitude);
+            break;
+        end
     end
     
     % Early termination messages for debugging
-    if pos_dist < position_tolerance && ~altitude_ok
+    if pos_dist < position_tolerance_vertical && ~altitude_ok
         if mod(iter, 50) == 0
-            fprintf('Position reached but altitude too low: %.2f m (need >= %.2f m)\n', ...
-                    current_pos(3), xd(3));
+            fprintf('Position reached but altitude issue: %.2f m (need %.2f m)\n', ...
+                    current_pos(3), xd_current(3));
         end
-    elseif pos_dist < position_tolerance && altitude_ok && ~angle_ok
+    elseif pos_dist < position_tolerance_vertical && altitude_ok && ~angle_ok
         if mod(iter, 50) == 0
             fprintf('Position/altitude OK but angle error too large: %.3f rad (%.1f°)\n', ...
                     max_angle_error, rad2deg(max_angle_error));
@@ -193,9 +215,9 @@ end
 computation_time = toc(computation_start);
 
 %% Calculate Performance Metrics
-final_pos_error = norm(xf(1:3,end) - xd(1:3));
+final_pos_error = norm(xf(1:3,end) - xd_phase2(1:3));
 final_altitude = xf(3,end);
-altitude_satisfied = final_altitude >= xd(3);
+altitude_satisfied = final_altitude >= xd_phase2(3);
 final_vel_magnitude = norm(xf(4:6,end));
 final_quat = xf(7:10,end);
 [final_roll, final_pitch, final_yaw] = quat2euler(final_quat);
@@ -218,7 +240,7 @@ fprintf('\n=== PERFORMANCE METRICS ===\n');
 fprintf('Computation time: %.3f seconds\n', computation_time);
 fprintf('Number of iterations: %d\n', size(xf, 2));
 fprintf('Final position error: %.3f m\n', final_pos_error);
-fprintf('Final altitude: %.3f m (target: %.3f m, satisfied: %s)\n', final_altitude, xd(3), mat2str(altitude_satisfied));
+fprintf('Final altitude: %.3f m (target: %.3f m, satisfied: %s)\n', final_altitude, xd_phase2(3), mat2str(altitude_satisfied));
 fprintf('Final velocity magnitude: %.3f m/s\n', final_vel_magnitude);
 fprintf('Final angle error: %.3f rad (%.1f degrees)\n', final_angle_error, rad2deg(final_angle_error));
 fprintf('Final angular velocity: %.3f rad/s\n', final_angular_vel);
@@ -235,21 +257,22 @@ subplot(3, 3, 1);
 plot3(xf(1,:), xf(2,:), xf(3,:), 'b-', 'LineWidth', 2);
 hold on;
 plot3(x0(1), x0(2), x0(3), 'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g');
-plot3(xd(1), xd(2), xd(3), 'ro', 'MarkerSize', 10, 'MarkerFaceColor', 'r');
+plot3(xd_phase1(1), xd_phase1(2), xd_phase1(3), 'mo', 'MarkerSize', 10, 'MarkerFaceColor', 'm'); % Hover point
+plot3(xd_phase2(1), xd_phase2(2), xd_phase2(3), 'ro', 'MarkerSize', 10, 'MarkerFaceColor', 'r');
 plot3(xf(1,end), xf(2,end), xf(3,end), 'bs', 'MarkerSize', 8, 'MarkerFaceColor', 'b');
 grid on;
 xlabel('X Position (m)');
 ylabel('Y Position (m)');
 zlabel('Z Position (m)');
 title('3D Trajectory');
-legend('Trajectory', 'Start', 'Target', 'Final', 'Location', 'best');
+legend('Trajectory', 'Start', 'Hover', 'Target', 'Final', 'Location', 'best');
 
 % X-Y trajectory plot with oriented VTOL rectangle
 subplot(3, 3, 2);
 plot(xf(1,:), xf(2,:), 'b-', 'LineWidth', 2);
 hold on;
 plot(x0(1), x0(2), 'go', 'MarkerSize', 10, 'MarkerFaceColor', 'g');
-plot(xd(1), xd(2), 'ro', 'MarkerSize', 10, 'MarkerFaceColor', 'r');
+plot(xd_phase2(1), xd_phase2(2), 'ro', 'MarkerSize', 10, 'MarkerFaceColor', 'r');
 
 % Draw oriented VTOL rectangle at final position
 vtol_width = 3;
@@ -297,12 +320,13 @@ subplot(3, 3, 3);
 time_steps = 0:dt:(size(xf,2)-1)*dt;
 plot(time_steps, xf(3,:), 'b-', 'LineWidth', 2);
 hold on;
-plot([0, time_steps(end)], [xd(3), xd(3)], 'r--', 'LineWidth', 1);
+plot([0, time_steps(end)], [xd_phase2(3), xd_phase2(3)], 'r--', 'LineWidth', 1);
+plot([0, time_steps(end)], [xd_phase1(3), xd_phase1(3)], 'm--', 'LineWidth', 1);
 grid on;
 xlabel('Time (s)');
 ylabel('Altitude (m)');
 title('Altitude vs Time');
-legend('Actual', 'Target', 'Location', 'best');
+legend('Actual', 'Landing Target', 'Hover Target', 'Location', 'best');
 
 % Velocities
 subplot(3, 3, 4);
@@ -384,14 +408,14 @@ text(0.1, 0.9, 'PERFORMANCE SUMMARY', 'FontSize', 14, 'FontWeight', 'bold');
 text(0.1, 0.8, sprintf('Computation Time: %.3f s', computation_time), 'FontSize', 10);
 text(0.1, 0.7, sprintf('Iterations: %d', size(xf, 2)), 'FontSize', 10);
 text(0.1, 0.6, sprintf('Final Position Error: %.3f m', final_pos_error), 'FontSize', 10);
-text(0.1, 0.55, sprintf('Final Altitude: %.2f m (>= %.2f)', final_altitude, xd(3)), 'FontSize', 10);
+text(0.1, 0.55, sprintf('Final Altitude: %.2f m (>= %.2f)', final_altitude, xd_phase2(3)), 'FontSize', 10);
 text(0.1, 0.5, sprintf('Final Angle Error: %.1f°', rad2deg(final_angle_error)), 'FontSize', 10);
 text(0.1, 0.4, sprintf('Final Velocity: %.3f m/s', final_vel_magnitude), 'FontSize', 10);
 text(0.1, 0.3, sprintf('Control Effort: %.3f', total_control_effort), 'FontSize', 10);
 text(0.1, 0.2, sprintf('Path Length: %.3f m', path_length), 'FontSize', 10);
 
 % Add overall title
-sgtitle('MPPI VTOL Control with Quaternion Dynamics and Vertical Landing', 'FontSize', 16, 'FontWeight', 'bold');
+sgtitle('MPPI VTOL Control with Quaternion Dynamics and Two-Phase Vertical Landing', 'FontSize', 16, 'FontWeight', 'bold');
 
 %% Helper Functions
 
@@ -419,26 +443,35 @@ function [roll, pitch, yaw] = quat2euler(q)
     yaw = atan2(siny_cosp, cosy_cosp);
 end
 
-function J = runningCost(x, xd, R, u, du, nu)
-    % Enhanced cost function with quaternion state and angle penalties for vertical landing
-    Q_pos = diag([2.5, 2.5, 20]);     % Position weights
-    Q_vel = diag([0, 0, 0]);          % Velocity weights  
-    Q_quat = diag([0.5, 15, 15, 0.5]); % Quaternion weights (high penalty for qx, qy)
-    Q_omega = diag([0, 0, 0]);        % Angular velocity weights
+function J = runningCost(x, xd_current, R, u, du, nu, phase)
+    % Phase-specific cost function with quaternion state and angle penalties
+    if phase == 1
+        % Phase 1: Horizontal flight to hover point, balanced position weights
+        Q_pos = diag([2.5, 2.5, 2.5]);
+        Q_vel = diag([0.1, 0.1, 0.1]);      % Slight velocity penalty
+        Q_quat = diag([0.5, 5, 5, 0.5]);    % Moderate penalty for roll/pitch
+        Q_omega = diag([0.1, 0.1, 0.1]);    % Slight angular velocity penalty
+    else
+        % Phase 2: Vertical landing, relax horizontal, emphasize vertical and orientation
+        Q_pos = diag([1, 1, 20]);           % Lower on x,y, high on z
+        Q_vel = diag([1, 1, 1]);            % Higher velocity penalty for soft landing
+        Q_quat = diag([0.5, 30, 30, 0.5]);  % High penalty for qx, qy (roll, pitch)
+        Q_omega = diag([1, 1, 1]);          % Higher angular velocity penalty
+    end
     
     Q = blkdiag(Q_pos, Q_vel, Q_quat, Q_omega);
     
     % State error computation
-    pos_err = x(1:3) - xd(1:3);
-    vel_err = x(4:6) - xd(4:6);
+    pos_err = x(1:3) - xd_current(1:3);
+    vel_err = x(4:6) - xd_current(4:6);
     
-    % For vertical landing, target quaternion should represent zero roll/pitch
+    % For vertical orientation, target quaternion should represent zero roll/pitch
     % Target: [1, 0, 0, qz] where qz can vary for yaw freedom
     target_quat = [1; 0; 0; x(10)]; % Keep current qz (yaw), zero qx, qy (roll, pitch)
     target_quat = target_quat / norm(target_quat); % Normalize
     
     quat_err = x(7:10) - target_quat;
-    omega_err = x(11:13) - xd(11:13);
+    omega_err = x(11:13) - xd_current(11:13);
     
     x_err = [pos_err; vel_err; quat_err; omega_err];
     
@@ -446,34 +479,44 @@ function J = runningCost(x, xd, R, u, du, nu)
     J = qx + 1/2*u'*R*u + (1-1/nu)/2*du'*R*du + u'*R*du;
 end
 
-function J = finalCost(xT, xd)
-    % Enhanced final cost with quaternion representation and your adjusted weights
-    Qf_pos = 20 * diag([5, 5, 10]);        % Position weights (your adjustment)
-    Qf_vel = 20 * diag([5, 5, 5]);         % Velocity weights (your adjustment)
-    Qf_quat = 20 * diag([0, 5, 5, 0]);     % Quaternion weights (high penalty for qx, qy)
-    Qf_omega = 20 * diag([5, 5, 5]);       % Angular velocity weights (your adjustment)
+function J = finalCost(xT, xd_current, phase)
+    % Phase-specific final cost with quaternion representation
+    if phase == 1
+        % Phase 1: Balanced weights, no altitude penalty
+        Qf_pos = 20 * diag([5, 5, 5]);
+        Qf_vel = 20 * diag([1, 1, 1]);
+        Qf_quat = 20 * diag([0, 1, 1, 0]);
+        Qf_omega = 20 * diag([1, 1, 1]);
+        altitude_penalty = 0;
+    else
+        % Phase 2: Relax horizontal, high on vertical, orientation, velocities; altitude penalty
+        Qf_pos = 20 * diag([1, 1, 10]);     % Lower on x,y
+        Qf_vel = 20 * diag([5, 5, 5]);
+        Qf_quat = 20 * diag([0, 10, 10, 0]);% High on roll/pitch
+        Qf_omega = 20 * diag([5, 5, 5]);
+        
+        % Add penalty if altitude is below target (z < z_expected)
+        altitude_penalty = 0;
+        if xT(3) < xd_current(3)
+            altitude_penalty = 1000 * (xd_current(3) - xT(3))^2; % Heavy penalty for being below target altitude
+        end
+    end
     
     Qf = blkdiag(Qf_pos, Qf_vel, Qf_quat, Qf_omega);
     
     % Target state for vertical landing
-    xd_vertical = xd;
-    % For vertical landing: qw=1, qx=0, qy=0, qz can be current value
-    xd_vertical(7) = 1;    % qw = 1
-    xd_vertical(8) = 0;    % qx = 0 (no roll)
-    xd_vertical(9) = 0;    % qy = 0 (no pitch)
-    xd_vertical(10) = xT(10); % qz = current qz (allow yaw freedom)
+    xd_target = xd_current;
+    % For vertical: qw=1, qx=0, qy=0, qz can be current value
+    xd_target(7) = 1;    % qw = 1
+    xd_target(8) = 0;    % qx = 0 (no roll)
+    xd_target(9) = 0;    % qy = 0 (no pitch)
+    xd_target(10) = xT(10); % qz = current qz (allow yaw freedom)
     
     % Normalize target quaternion
-    q_target = xd_vertical(7:10);
-    xd_vertical(7:10) = q_target / norm(q_target);
+    q_target = xd_target(7:10);
+    xd_target(7:10) = q_target / norm(q_target);
     
-    % Add penalty if altitude is below target (z < z_expected)
-    altitude_penalty = 0;
-    if xT(3) < xd(3)
-        altitude_penalty = 1000 * (xd(3) - xT(3))^2; % Heavy penalty for being below target altitude
-    end
-    
-    J = (xT - xd_vertical)' * Qf * (xT - xd_vertical) + altitude_penalty;
+    J = (xT - xd_target)' * Qf * (xT - xd_target) + altitude_penalty;
 end
 
 function du = clippeddu(utraj, du)
